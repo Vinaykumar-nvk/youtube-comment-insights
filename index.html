@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Comment Insights</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        .sidebar-container { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+        .comment-section { height: calc(100vh - 250px); overflow-y: auto; overflow-x: hidden; width: 100%; }
+        .category-stats { font-size: 0.8em; color: #666; margin-left: 0.5em; }
+        .comment-container { transition: all 0.3s ease; word-wrap: break-word; max-width: 100%; padding: 1rem; margin-bottom: 1rem; min-height: 120px; display: flex; flex-direction: row; justify-content: space-between; gap: 1rem; }
+        .comment-content { flex: 2; display: flex; flex-direction: column; justify-content: space-between; }
+        .comment-actions { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-end; }
+        .action-buttons { display: flex; gap: 0.25rem; align-items: center; }
+        .comment-container:hover { transform: translateX(5px); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
+        .youtube-btn, .action-btn { padding: 0.3rem 0.5rem; font-size: 0.7rem; border-radius: 0.375rem; cursor: pointer; transition: background-color 0.2s, transform 0.2s; width: 2rem; height: 2rem; display: flex; align-items: center; justify-content: center; }
+        .youtube-btn:hover, .action-btn:hover:not(.disabled) { transform: scale(1.1); }
+        .disabled { background: #d3d3d3 !important; color: #999 !important; cursor: not-allowed !important; }
+        .action-row { display: flex; gap: 0.25rem; align-items: center; margin-top: 0.5rem; }
+        .selected { background-color: #bfdbfe !important; }
+        .reply-box { position: relative; display: flex; align-items: center; width: 100%; margin-top: 0.5rem; }
+        .reply-input { flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; }
+        .reply-text { border: 1px solid #d1d5db; border-radius: 0.375rem; padding: 0.5rem; background-color: #f9fafb; width: 100%; }
+        .editable-reply:hover { background-color: #f3f4f6; cursor: text; }
+        .reply-actions { position: absolute; right: 0.5rem; display: flex; gap: 0.25rem; }
+        .emoji-btn { width: 1.5rem; height: 1.5rem; padding: 0; }
+        .reply-item { display: flex; align-items: center; gap: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <header class="bg-white shadow-md py-4 px-6 mb-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                <div class="flex items-center space-x-4">
+                    <i class="fab fa-youtube text-red-500 text-3xl"></i>
+                    <h1 class="text-2xl font-bold text-gray-800">YouTube Comment Insights</h1>
+                </div>
+                <nav class="flex space-x-4">
+                    <button id="nav-home" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Home</button>
+                    <button id="nav-frequent" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Frequent</button>
+                </nav>
+                <div class="flex space-x-2 items-center">
+                    <input type="text" id="youtube-url" placeholder="Paste YouTube URL" class="w-48 p-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-transparent h-7"/>
+                    <button id="fetch-comments" class="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 flex items-center space-x-1 h-7">
+                        <i class="fas fa-sync-alt text-sm"></i>
+                        <span class="text-sm">Analyze</span>
+                    </button>
+                    <div class="flex items-center space-x-1">
+                        <button id="auth-button" class="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200 flex items-center space-x-1 h-7">
+                            <i class="fas fa-sign-in-alt text-sm"></i>
+                            <span class="text-sm">Sign In</span>
+                        </button>
+                        <button id="signout-button" class="hidden px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-1 h-7">
+                            <span class="text-sm">Sign Out</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4">
+        <div id="loading-spinner" class="hidden">
+            <div class="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div class="bg-white p-6 rounded-lg shadow-xl flex items-center space-x-4">
+                    <div class="loading-spinner text-blue-500"><i class="fas fa-circle-notch text-3xl"></i></div>
+                    <span class="text-lg">Analyzing...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="md:col-span-1">
+                <div class="sidebar-container bg-white rounded-lg shadow-md p-4">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">Categories</h2>
+                    <div class="space-y-2" id="category-buttons"></div>
+                </div>
+            </div>
+
+            <div class="md:col-span-3">
+                <div class="bg-white rounded-lg shadow-md p-4" id="content-area">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 id="category-header" class="text-xl font-semibold text-gray-800">Select a category to view comments</h2>
+                        <div id="comment-stats" class="text-sm text-gray-600"></div>
+                    </div>
+                    <div class="flex space-x-2 mb-4" id="filters">
+                        <button id="filter-replied" class="px-4 py-2 bg-gray-200 rounded-lg">Show Replied</button>
+                        <button id="filter-not-replied" class="px-4 py-2 bg-gray-200 rounded-lg">Show Not Replied</button>
+                        <div id="bulk-reply-container" class="hidden flex space-x-2">
+                            <button id="bulk-reply-btn" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400" disabled>Bulk Reply</button>
+                            <button id="bulk-update-btn" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:bg-gray-400" disabled>Bulk Update</button>
+                            <button id="bulk-delete-btn" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-400" disabled>Bulk Delete</button>
+                            <input type="text" id="bulk-reply-text" placeholder="Enter reply text" class="p-2 border rounded-lg" />
+                        </div>
+                    </div>
+                    <div id="comment-list" class="space-y-3 comment-section custom-scrollbar">
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="far fa-comments text-4xl mb-2"></i>
+                            <p>Enter a YouTube URL and click Analyze to start</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const commentManager = {
+            comments: { new_comments: [], frequent_comments: {}, categorized: {}, clusters: {} },
+            videoId: null,
+            currentCategory: null,
+            filterType: null,
+            isAuthenticated: false,
+            isVideoOwner: false,
+            currentView: 'home',
+
+            init() {
+                this.checkAuthentication();
+                this.renderCategoryButtons();
+                document.getElementById('youtube-url').addEventListener('input', () => this.handleUrlPaste());
+                document.getElementById('fetch-comments').addEventListener('click', () => this.fetchComments());
+                document.getElementById('filter-replied').addEventListener('click', () => this.toggleFilter('replied'));
+                document.getElementById('filter-not-replied').addEventListener('click', () => this.toggleFilter('not_replied'));
+                document.getElementById('auth-button').addEventListener('click', () => this.handleSignIn());
+                document.getElementById('signout-button').addEventListener('click', () => this.handleSignOut());
+                document.getElementById('nav-home').addEventListener('click', () => this.switchView('home'));
+                document.getElementById('nav-frequent').addEventListener('click', () => this.switchView('frequent'));
+                document.getElementById('bulk-reply-btn').addEventListener('click', () => this.bulkReply());
+                document.getElementById('bulk-update-btn').addEventListener('click', () => this.bulkUpdateReplies());
+                document.getElementById('bulk-delete-btn').addEventListener('click', () => this.bulkDeleteReplies());
+            },
+
+            async handleUrlPaste() {
+                const urlInput = document.getElementById('youtube-url');
+                const input = urlInput.value.trim();
+                const videoId = this.extractVideoId(input);
+                if (!videoId) {
+                    this.videoId = null;
+                    this.isVideoOwner = false;
+                    this.displayContent();
+                    return;
+                }
+                this.videoId = videoId;
+                await this.checkAuthentication();
+                if (!this.isAuthenticated) {
+                    alert('Please sign in to proceed');
+                    return;
+                }
+                await this.checkVideoOwnership();
+                this.displayContent();
+            },
+
+            async handleSignIn() {
+                window.location.href = 'http://127.0.0.1:8080/auth';
+            },
+
+            async handleSignOut() {
+                await fetch('http://127.0.0.1:8080/signout', {
+                    method: 'POST',
+                    credentials: 'include',
+                    mode: 'cors'
+                });
+                this.isAuthenticated = false;
+                this.isVideoOwner = false;
+                const authButton = document.getElementById('auth-button');
+                const signoutButton = document.getElementById('signout-button');
+                authButton.innerHTML = '<i class="fas fa-sign-in-alt text-sm"></i><span class="text-sm">Sign In</span>';
+                authButton.disabled = false;
+                signoutButton.classList.add('hidden');
+                this.displayContent();
+            },
+
+            async checkAuthentication() {
+                const response = await fetch('http://127.0.0.1:8080/check_auth', {
+                    method: 'GET',
+                    credentials: 'include',
+                    mode: 'cors'
+                });
+                const data = await response.json();
+                this.isAuthenticated = data.status === "authenticated";
+                const authButton = document.getElementById('auth-button');
+                const signoutButton = document.getElementById('signout-button');
+                if (this.isAuthenticated) {
+                    authButton.innerHTML = '🙍‍♂️';
+                    authButton.disabled = true;
+                    signoutButton.classList.remove('hidden');
+                } else {
+                    authButton.innerHTML = '<i class="fas fa-sign-in-alt text-sm"></i><span class="text-sm">Sign In</span>';
+                    authButton.disabled = false;
+                    signoutButton.classList.add('hidden');
+                }
+            },
+
+            async checkVideoOwnership() {
+                if (!this.videoId || !this.isAuthenticated) {
+                    this.isVideoOwner = false;
+                    this.updateBulkReplyUI();
+                    return;
+                }
+                const response = await fetch(`http://127.0.0.1:8080/check_ownership/?video_id=${this.videoId}`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    mode: 'cors'
+                });
+                const data = await response.json();
+                this.isVideoOwner = data.is_owner;
+                this.updateBulkReplyUI();
+            },
+
+            async fetchComments() {
+                const urlInput = document.getElementById('youtube-url');
+                const input = urlInput.value.trim();
+                const videoId = this.extractVideoId(input);
+                if (!videoId) {
+                    alert('Invalid YouTube URL');
+                    return;
+                }
+                if (!this.isAuthenticated) {
+                    alert('Please sign in to fetch comments');
+                    return;
+                }
+                this.showLoading(true);
+                try {
+                    const response = await fetch('http://127.0.0.1:8080/analyze_comments/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ video_url: input }),
+                        credentials: 'include'
+                    });
+                    if (!response.ok) throw new Error(await response.text());
+                    const responseData = await response.json();
+                    this.comments = responseData || { categorized: {}, frequent_comments: {}, clusters: {} };
+                    this.videoId = videoId;
+                    await this.checkVideoOwnership();
+                    this.updateCategoryStats();
+                    this.switchView(this.currentView);
+                } catch (error) {
+                    alert(`Failed to load comments: ${error.message}`);
+                    document.getElementById('comment-list').innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="far fa-comments text-4xl mb-2"></i>
+                            <p>Error loading comments: ${error.message}</p>
+                        </div>`;
+                } finally {
+                    this.showLoading(false);
+                }
+            },
+
+            renderCategoryButtons() {
+                const categories = ["Feedback", "Questions", "Praise", "Suggestions", "Criticism", "Complaints", "Off-Topic/Spam"];
+                const container = document.getElementById('category-buttons');
+                container.innerHTML = categories.map(cat =>
+                    `<button data-category="${cat}" class="category-btn w-full text-left p-3 rounded-lg hover:bg-blue-50 transition-colors duration-200">
+                        <i class="far ${this.getIcon(cat)} mr-2 ${this.getColor(cat)}"></i>${cat}<span class="category-stats"></span>
+                    </button>`
+                ).join('');
+                document.querySelectorAll('.category-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => this.selectCategory(e.currentTarget.dataset.category));
+                });
+            },
+
+            getIcon(category) {
+                const icons = {
+                    "Feedback": "fa-comment", "Questions": "fa-question-circle", "Praise": "fa-smile",
+                    "Suggestions": "fa-lightbulb", "Criticism": "fa-frown", "Complaints": "fa-times-circle",
+                    "Off-Topic/Spam": "fa-trash-alt"
+                };
+                return icons[category] || "fa-comment";
+            },
+
+            getColor(category) {
+                const colors = {
+                    "Feedback": "text-gray-500", "Questions": "text-blue-500", "Praise": "text-green-500",
+                    "Suggestions": "text-yellow-500", "Criticism": "text-red-500", "Complaints": "text-orange-500",
+                    "Off-Topic/Spam": "text-purple-500"
+                };
+                return colors[category] || "text-gray-500";
+            },
+
+            selectCategory(category) {
+                this.currentCategory = category;
+                this.highlightCategory(category);
+                this.displayContent();
+            },
+
+            toggleFilter(filterType) {
+                const repliedBtn = document.getElementById('filter-replied');
+                const notRepliedBtn = document.getElementById('filter-not-replied');
+                if (filterType === 'replied') {
+                    this.filterType = this.filterType === 'replied' ? null : 'replied';
+                    repliedBtn.classList.toggle('selected', this.filterType === 'replied');
+                    notRepliedBtn.classList.remove('selected');
+                } else if (filterType === 'not_replied') {
+                    this.filterType = this.filterType === 'not_replied' ? null : 'not_replied';
+                    notRepliedBtn.classList.toggle('selected', this.filterType === 'not_replied');
+                    repliedBtn.classList.remove('selected');
+                }
+                this.displayContent();
+            },
+
+            switchView(view) {
+                this.currentView = view;
+                const homeBtn = document.getElementById('nav-home');
+                const frequentBtn = document.getElementById('nav-frequent');
+                const bulkReplyContainer = document.getElementById('bulk-reply-container');
+                homeBtn.classList.toggle('selected', view === 'home');
+                frequentBtn.classList.toggle('selected', view === 'frequent');
+                bulkReplyContainer.classList.toggle('hidden', view !== 'frequent');
+                this.updateBulkReplyUI();
+                this.updateCategoryStats();
+                this.displayContent();
+            },
+
+            updateBulkReplyUI() {
+                const bulkReplyBtn = document.getElementById('bulk-reply-btn');
+                const bulkUpdateBtn = document.getElementById('bulk-update-btn');
+                const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+                const bulkInput = document.getElementById('bulk-reply-text');
+                if (this.currentView === 'frequent' && this.isAuthenticated && this.isVideoOwner) {
+                    bulkReplyBtn.classList.remove('disabled');
+                    bulkUpdateBtn.classList.remove('disabled');
+                    bulkDeleteBtn.classList.remove('disabled');
+                    bulkReplyBtn.disabled = true;
+                    bulkUpdateBtn.disabled = true;
+                    bulkDeleteBtn.disabled = true;
+                    bulkInput.disabled = false;
+                    bulkInput.placeholder = "Enter reply text";
+                    this.toggleBulkButtons();
+                } else {
+                    bulkReplyBtn.classList.add('disabled');
+                    bulkUpdateBtn.classList.add('disabled');
+                    bulkDeleteBtn.classList.add('disabled');
+                    bulkReplyBtn.disabled = true;
+                    bulkUpdateBtn.disabled = true;
+                    bulkDeleteBtn.disabled = true;
+                    bulkInput.disabled = true;
+                    bulkInput.placeholder = this.isAuthenticated ? "Only video owners can bulk reply" : "Sign in to bulk reply";
+                }
+            },
+
+            displayContent() {
+                const commentList = document.getElementById('comment-list');
+                const categoryHeader = document.getElementById('category-header');
+                if (!this.currentCategory) this.currentCategory = 'Feedback';
+                let comments = this.currentView === 'home' ? this.comments.categorized[this.currentCategory] || [] : this.comments.frequent_comments[this.currentCategory] || [];
+
+                if (this.filterType === 'replied') {
+                    comments = comments.filter(c => c.replied);
+                } else if (this.filterType === 'not_replied') {
+                    comments = comments.filter(c => !c.replied);
+                }
+
+                categoryHeader.textContent = `${this.currentCategory} (${comments.length} ${this.currentView === 'home' ? 'comments' : 'frequent comments'})`;
+                if (!this.isAuthenticated) {
+                    commentList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-sign-in-alt text-4xl mb-2"></i>
+                            <p>Please sign in to view comments</p>
+                        </div>`;
+                } else if (!this.videoId) {
+                    commentList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="far fa-comments text-4xl mb-2"></i>
+                            <p>Enter a YouTube URL to start</p>
+                        </div>`;
+                } else if (comments.length > 0) {
+                    commentList.innerHTML = comments.map((comment, i) => {
+                        const isFrequent = this.currentView === 'frequent';
+                        const replies = comment.replies || [];
+                        const uniqueReplies = [];
+                        const seenReplyIds = new Set();
+                        replies.forEach(reply => {
+                            if (!seenReplyIds.has(reply.reply_id)) {
+                                seenReplyIds.add(reply.reply_id);
+                                uniqueReplies.push(reply);
+                            }
+                        });
+
+                        const categories = Array.isArray(comment.categories) ? comment.categories : [];
+                        const categoriesJson = JSON.stringify(categories);
+
+                        return `
+                            <div class="comment-container bg-gray-50 rounded-lg shadow-sm">
+                                <div class="comment-content">
+                                    <div class="flex items-center">
+                                        ${isFrequent ? `<input type="checkbox" data-comment-ids='${JSON.stringify(comment.comment_ids)}' class="mr-2" onchange="commentManager.toggleBulkButtons()">` : ''}
+                                        <span class="font-medium text-gray-800">${isFrequent ? i + 1 : `${i + 1} ${comment.author_display_name || ''}`}</span>
+                                    </div>
+                                    <p class="mt-1">${comment.text || comment.comment_text || ''}${isFrequent ? ` (${comment.count} occurrences)` : ''}</p>
+                                    <div class="mt-2 flex gap-2 flex-wrap">
+                                        ${categories.map(cat => `<span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">${cat}</span>`).join('')}
+                                    </div>
+                                    ${uniqueReplies.length > 0 ? `
+                                        <div class="mt-2">
+                                            <p class="text-sm text-gray-600">Your Replies:</p>
+                                            ${uniqueReplies.map(reply => `
+                                                <div class="reply-item">
+                                                    ${isFrequent ? `<input type="checkbox" data-reply-id="${reply.reply_id}" data-comment-ids='${JSON.stringify(comment.comment_ids)}' class="mr-2" onchange="commentManager.toggleBulkButtons()">` : ''}
+                                                    <div class="reply-box flex-1">
+                                                        <div class="reply-text ${isFrequent ? '' : 'editable-reply reply-input'}" ${!isFrequent ? `contenteditable="true" data-reply-id="${reply.reply_id}" data-comment-id="${comment.comment_id || comment.comment_ids[0]}"` : ''}>${reply.text}</div>
+                                                        ${!isFrequent ? `
+                                                            <div class="reply-actions">
+                                                                <button onclick="commentManager.updateReply('${comment.comment_id || comment.comment_ids[0]}', '${reply.reply_id}')" class="emoji-btn action-btn text-blue-500"><i class="fas fa-paper-plane"></i></button>
+                                                                <button onclick="commentManager.deleteReply('${comment.comment_id || comment.comment_ids[0]}', '${reply.reply_id}')" class="emoji-btn action-btn text-red-500"><i class="fas fa-trash"></i></button>
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div class="comment-actions">
+                                    <div class="action-buttons">
+                                        <button onclick="window.open('https://www.youtube.com/watch?v=${this.videoId}&lc=${comment.comment_id || comment.comment_ids[0]}', '_blank')" class="youtube-btn flex items-center text-gray-700">
+                                            <i class="fas fa-eye text-sm"></i>
+                                        </button>
+                                        <button onclick="commentManager.correctComment('${encodeURIComponent(comment.text || comment.comment_text)}', '${encodeURIComponent(categoriesJson)}', ${isFrequent})" class="youtube-btn flex items-center text-gray-700">
+                                            <i class="fas fa-edit text-sm"></i>
+                                        </button>
+                                        ${this.currentView === 'home' && this.isVideoOwner ? `
+                                            <button onclick="commentManager.deleteComment('${comment.comment_id || comment.comment_ids[0]}')" class="youtube-btn flex items-center text-red-700">
+                                                <i class="fas fa-trash-alt text-sm"></i>
+                                            </button>
+                                        ` : ''}
+                                    </div>
+                                    ${this.currentView === 'home' && this.isAuthenticated ? `
+                                        <div class="reply-box">
+                                            <input type="text" id="reply_${comment.comment_id || comment.comment_ids[0]}" placeholder="Add a reply..." class="reply-input">
+                                            <div class="reply-actions">
+                                                <button onclick="commentManager.replyComment('${comment.comment_id || comment.comment_ids[0]}', ${isFrequent})" class="emoji-btn action-btn text-blue-500"><i class="fas fa-paper-plane"></i></button>
+                                            </div>
+                                        </div>
+                                    ` : this.isAuthenticated ? '' : `
+                                        <p class="text-gray-500 text-sm">Sign in to interact</p>
+                                    `}
+                                </div>
+                            </div>`;
+                    }).join('');
+                } else {
+                    commentList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="far ${this.currentView === 'home' ? 'fa-comments' : 'fa-clone'} text-4xl mb-2"></i>
+                            <p>No ${this.currentView === 'home' ? 'comments' : 'frequent comments'} in this category</p>
+                        </div>`;
+                }
+            },
+
+            updateCategoryStats() {
+                const categoryButtons = document.querySelectorAll('.category-btn');
+                categoryButtons.forEach(btn => {
+                    const category = btn.dataset.category;
+                    const count = this.currentView === 'home' ?
+                        (this.comments.categorized[category] ? this.comments.categorized[category].length : 0) :
+                        (this.comments.frequent_comments[category] ? this.comments.frequent_comments[category].length : 0);
+                    const statsSpan = btn.querySelector('.category-stats');
+                    statsSpan.textContent = `(${count})`;
+                });
+            },
+
+            highlightCategory(category) {
+                const categoryButtons = document.querySelectorAll('.category-btn');
+                categoryButtons.forEach(btn => {
+                    btn.classList.toggle('bg-blue-50', btn.dataset.category === category);
+                    btn.classList.toggle('font-medium', btn.dataset.category === category);
+                });
+            },
+
+            extractVideoId(url) {
+                const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^\"&?\/\s]{11})/;
+                const match = url.match(regex);
+                return match ? match[1] : null;
+            },
+
+            showLoading(show) {
+                const spinner = document.getElementById('loading-spinner');
+                spinner.classList.toggle('hidden', !show);
+            },
+
+            async correctComment(encodedText, encodedCategories, isFrequent) {
+                const text = decodeURIComponent(encodedText);
+                const categories = JSON.parse(decodeURIComponent(encodedCategories));
+                const currentCategories = categories.join(',');
+                const corrected = prompt(`Correct categories for "${text}" (comma-separated):`, currentCategories);
+                if (corrected) {
+                    await fetch("http://127.0.0.1:8080/correct_comment/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ comment_text: text, corrected_categories: corrected.split(',') }),
+                        credentials: 'include'
+                    });
+                    const comments = isFrequent ? this.comments.frequent_comments[this.currentCategory] : this.comments.categorized[this.currentCategory];
+                    const comment = comments.find(c => (c.text || c.comment_text) === text);
+                    if (comment) {
+                        comment.categories = corrected.split(',').map(cat => cat.trim());
+                    }
+                    this.displayContent();
+                    alert("Correction saved");
+                }
+            },
+
+            async replyComment(commentId, isFrequent) {
+                if (!this.isAuthenticated) {
+                    alert("Please sign in to reply");
+                    return;
+                }
+                const replyText = document.getElementById(`reply_${commentId}`).value;
+                if (!replyText) {
+                    alert("Please enter a reply");
+                    return;
+                }
+                try {
+                    const response = await fetch("http://127.0.0.1:8080/reply_comment/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ comment_id: commentId, reply_text: replyText }),
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
+                    const comments = this.currentView === 'home' ? this.comments.categorized[this.currentCategory] : this.comments.frequent_comments[this.currentCategory];
+                    const comment = comments.find(c => (c.comment_id || c.comment_ids[0]) === commentId);
+                    if (comment) {
+                        if (!comment.replies) comment.replies = [];
+                        comment.replies.push({ reply_id: data.reply_id, text: replyText, timestamp: new Date().toISOString() });
+                        comment.replied = true;
+                    }
+                    this.displayContent();
+                    alert("Reply posted successfully!");
+                } catch (error) {
+                    alert("Error posting reply: " + error.message);
+                }
+            },
+
+            async updateReply(commentId, replyId) {
+                const replyElement = document.querySelector(`.reply-text[data-reply-id="${replyId}"]`);
+                const newReplyText = replyElement.innerText.trim();
+                if (!newReplyText) {
+                    alert("Reply text cannot be empty");
+                    return;
+                }
+                if (!confirm("Are you sure you want to update this reply?")) return;
+                try {
+                    await fetch("http://127.0.0.1:8080/delete_reply/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ reply_id: replyId }),
+                        credentials: 'include'
+                    });
+                    const response = await fetch("http://127.0.0.1:8080/reply_comment/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ comment_id: commentId, reply_text: newReplyText }),
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
+                    const comments = this.currentView === 'home' ? this.comments.categorized[this.currentCategory] : this.comments.frequent_comments[this.currentCategory];
+                    const comment = comments.find(c => (c.comment_id || c.comment_ids[0]) === commentId);
+                    if (comment) {
+                        comment.replies = comment.replies.filter(r => r.reply_id !== replyId);
+                        comment.replies.push({ reply_id: data.reply_id, text: newReplyText, timestamp: new Date().toISOString() });
+                    }
+                    this.displayContent();
+                    alert("Reply updated successfully!");
+                } catch (error) {
+                    alert("Error updating reply: " + error.message);
+                }
+            },
+
+            async deleteReply(commentId, replyId) {
+                if (!confirm("Are you sure you want to delete this reply?")) return;
+                try {
+                    await fetch("http://127.0.0.1:8080/delete_reply/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ reply_id: replyId }),
+                        credentials: 'include'
+                    });
+                    const comments = this.currentView === 'home' ? this.comments.categorized[this.currentCategory] : this.comments.frequent_comments[this.currentCategory];
+                    const comment = comments.find(c => (c.comment_id || c.comment_ids[0]) === commentId);
+                    if (comment && comment.replies) {
+                        comment.replies = comment.replies.filter(r => r.reply_id !== replyId);
+                        comment.replied = comment.replies.length > 0;
+                    }
+                    this.displayContent();
+                    alert("Reply deleted successfully!");
+                } catch (error) {
+                    alert("Error deleting reply: " + error.message);
+                }
+            },
+
+            async deleteComment(commentId) {
+                if (!this.isAuthenticated || !this.isVideoOwner) {
+                    alert("Only the video owner can delete comments");
+                    return;
+                }
+                if (!confirm("Are you sure you want to delete this comment?")) return;
+                try {
+                    await fetch("http://127.0.0.1:8080/delete_comment/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ comment_id: commentId, video_id: this.videoId }),
+                        credentials: 'include'
+                    });
+                    const comments = this.comments.categorized[this.currentCategory];
+                    const index = comments.findIndex(c => c.comment_id === commentId);
+                    if (index !== -1) comments.splice(index, 1);
+                    this.displayContent();
+                    alert("Comment deleted successfully");
+                } catch (error) {
+                    alert("Error deleting comment: " + error.message);
+                }
+            },
+
+            async bulkReply() {
+                if (!this.isAuthenticated || !this.isVideoOwner) {
+                    alert("Only the video owner can bulk reply");
+                    return;
+                }
+                const selectedCheckboxes = document.querySelectorAll('.comment-container input[type="checkbox"][data-comment-ids]:checked');
+                const commentGroups = Array.from(selectedCheckboxes).map(cb => JSON.parse(cb.dataset.commentIds));
+                const replyText = document.getElementById('bulk-reply-text').value.trim();
+                if (!replyText || commentGroups.length === 0) {
+                    alert("Please select frequent comments and enter reply text");
+                    return;
+                }
+                try {
+                    for (const commentIds of commentGroups) {
+                        const response = await fetch('http://127.0.0.1:8080/bulk_reply/', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ comment_ids: commentIds, reply_text: replyText, video_id: this.videoId }),
+                            credentials: 'include'
+                        });
+                        if (!response.ok) throw new Error(await response.text());
+                        const comments = this.comments.frequent_comments[this.currentCategory];
+                        const comment = comments.find(c => JSON.stringify(c.comment_ids) === JSON.stringify(commentIds));
+                        if (comment) {
+                            if (!comment.replies) comment.replies = [];
+                            commentIds.forEach((id, index) => {
+                                comment.replies.push({
+                                    reply_id: `bulk_${id}_${Date.now()}_${index}`,
+                                    text: replyText,
+                                    timestamp: new Date().toISOString()
+                                });
+                            });
+                            comment.replied = true;
+                        }
+                    }
+                    const totalComments = commentGroups.reduce((sum, group) => sum + group.length, 0);
+                    alert(`Successfully replied to ${totalComments} comments across ${commentGroups.length} groups`);
+                    this.displayContent();
+                } catch (error) {
+                    alert(`Bulk reply failed: ${error.message}`);
+                }
+            },
+
+            async bulkUpdateReplies() {
+                if (!this.isAuthenticated || !this.isVideoOwner) {
+                    alert("Only the video owner can bulk update replies");
+                    return;
+                }
+                const selectedReplyCheckboxes = document.querySelectorAll('.reply-item input[type="checkbox"][data-reply-id]:checked');
+                const replyGroups = Array.from(selectedReplyCheckboxes).map(cb => ({
+                    replyId: cb.dataset.replyId,
+                    commentIds: JSON.parse(cb.dataset.commentIds)
+                }));
+                const newReplyText = document.getElementById('bulk-reply-text').value.trim();
+                if (!newReplyText || replyGroups.length === 0) {
+                    alert("Please select replies and enter new reply text");
+                    return;
+                }
+                try {
+                    for (const { replyId, commentIds } of replyGroups) {
+                        await fetch("http://127.0.0.1:8080/delete_reply/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ reply_id: replyId }),
+                            credentials: 'include'
+                        });
+                        const response = await fetch("http://127.0.0.1:8080/reply_comment/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ comment_id: commentIds[0], reply_text: newReplyText }),
+                            credentials: 'include'
+                        });
+                        const data = await response.json();
+                        const comments = this.comments.frequent_comments[this.currentCategory];
+                        const comment = comments.find(c => JSON.stringify(c.comment_ids) === JSON.stringify(commentIds));
+                        if (comment) {
+                            comment.replies = comment.replies.filter(r => r.reply_id !== replyId);
+                            comment.replies.push({ reply_id: data.reply_id, text: newReplyText, timestamp: new Date().toISOString() });
+                            comment.replied = true;
+                        }
+                    }
+                    alert(`Successfully updated ${replyGroups.length} replies`);
+                    this.displayContent();
+                } catch (error) {
+                    console.error("Bulk update error:", error);
+                    alert(`Bulk update failed: ${error.message}`);
+                }
+            },
+
+            async bulkDeleteReplies() {
+                if (!this.isAuthenticated || !this.isVideoOwner) {
+                    alert("Only the video owner can bulk delete replies");
+                    return;
+                }
+                const selectedReplyCheckboxes = document.querySelectorAll('.reply-item input[type="checkbox"][data-reply-id]:checked');
+                const replyGroups = Array.from(selectedReplyCheckboxes).map(cb => ({
+                    replyId: cb.dataset.replyId,
+                    commentIds: JSON.parse(cb.dataset.commentIds)
+                }));
+                if (replyGroups.length === 0) {
+                    alert("Please select replies to delete");
+                    return;
+                }
+                try {
+                    for (const { replyId, commentIds } of replyGroups) {
+                        await fetch("http://127.0.0.1:8080/delete_reply/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ reply_id: replyId }),
+                            credentials: 'include'
+                        });
+                        const comments = this.comments.frequent_comments[this.currentCategory];
+                        const comment = comments.find(c => JSON.stringify(c.comment_ids) === JSON.stringify(commentIds));
+                        if (comment && comment.replies) {
+                            comment.replies = comment.replies.filter(r => r.reply_id !== replyId);
+                            comment.replied = comment.replies.length > 0;
+                        }
+                    }
+                    alert(`Successfully deleted ${replyGroups.length} replies`);
+                    this.displayContent();
+                } catch (error) {
+                    console.error("Bulk delete error:", error);
+                    alert(`Bulk delete failed: ${error.message}`);
+                }
+            },
+
+            toggleBulkButtons() {
+                const selectedComments = document.querySelectorAll('.comment-container input[type="checkbox"][data-comment-ids]:checked');
+                const selectedReplies = document.querySelectorAll('.reply-item input[type="checkbox"][data-reply-id]:checked');
+                const bulkReplyBtn = document.getElementById('bulk-reply-btn');
+                const bulkUpdateBtn = document.getElementById('bulk-update-btn');
+                const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+                bulkReplyBtn.disabled = selectedComments.length === 0 || !this.isVideoOwner;
+                bulkUpdateBtn.disabled = selectedReplies.length === 0 || !this.isVideoOwner;
+                bulkDeleteBtn.disabled = selectedReplies.length === 0 || !this.isVideoOwner;
+            }
+        };
+
+        window.onload = function() {
+            commentManager.init();
+        };
+
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            .loading-spinner i { animation: spin 1s linear infinite; }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
