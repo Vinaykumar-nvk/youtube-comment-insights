@@ -1,0 +1,16 @@
+# Sensitive files
+client_secrets.json
+token.json
+.env
+app.log
+
+# Python cache and env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+yt_analysis_env/
+
+# Other temp files
+*.log
+*.tmp
