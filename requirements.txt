@@ -1,0 +1,23 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+requests==2.32.3
+torch==2.4.1
+transformers==4.44.2
+optimum[onnxruntime]==1.21.4
+onnxruntime==1.19.2
+scikit-learn==1.5.2
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.144.0
+python-dotenv
+
+# # If above causes error try these
+# fastapi
+# uvicorn
+# requests
+# torch
+# transformers
+# optimum[onnxruntime]
+# scikit-learn
+# google-auth-oauthlib
+# google-api-python-client
+# python-dotenv
